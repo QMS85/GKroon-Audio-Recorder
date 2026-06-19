@@ -2,12 +2,27 @@ let ws = null;
 let timerInterval = null;
 let startTime = 0;
 let totalBytesEncoded = 0;
-const BYTES_PER_SECOND = 44100 * 2 * 2; // 44100Hz * Stereo (2) * 16-bit (2 bytes)
+const BYTES_PER_SECOND = 44100 * 2 * 2; 
 
 const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
 const timerDisplay = document.getElementById('timer');
 const statusDisplay = document.getElementById('status');
+
+function checkServerStatus() {
+  const testWs = new WebSocket('ws://localhost:3000');
+  testWs.onopen = () => {
+    chrome.runtime.sendMessage({ action: "SERVER_READY" });
+    statusDisplay.textContent = "Connected to Node.js server. Ready.";
+    testWs.close();
+  };
+  testWs.onerror = () => {
+    chrome.runtime.sendMessage({ action: "SERVER_OFFLINE" });
+    statusDisplay.textContent = "🛑 Server offline! Start 'node server.js'";
+  };
+}
+
+checkServerStatus();
 
 function updateLiveMetrics() {
   const elapsed = Date.now() - startTime;
@@ -25,63 +40,67 @@ function updateLiveMetrics() {
 }
 
 function handleCleanStopState() {
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
-    if (timerInterval) clearInterval(timerInterval);
-    timerDisplay.textContent = "00:00:00";
-    statusDisplay.textContent = "Flushing audio buffer and normalizing...";
-  
-    // 1. Tell background script to stop capturing audio immediately
-    chrome.runtime.sendMessage({ action: "STOP_CAPTURE" });
-  
-    // 2. DELAY CLOSING: Wait 500ms to let the final data packets reach the server
-    setTimeout(() => {
-      statusDisplay.textContent = "Processing and Normalizing Audio File...";
-      if (ws) {
-        ws.close();
-        ws = null;
-      }
-      // Check server availability to restore icon state colors
-      setTimeout(checkServerStatus, 1500);
-    }, 500); 
-  }
-  
+  startBtn.disabled = false;
+  stopBtn.disabled = true;
+  if (timerInterval) clearInterval(timerInterval);
+  timerDisplay.textContent = "00:00:00";
+  statusDisplay.textContent = "Flushing audio buffers and normalizing file...";
+
+  chrome.runtime.sendMessage({ action: "STOP_CAPTURE" });
+
+  setTimeout(() => {
+    if (ws) {
+      ws.close();
+      ws = null;
+    }
+  }, 600); // 600ms safety padding flush to capture lagging packets securely
+}
 
 startBtn.addEventListener('click', () => {
   statusDisplay.textContent = "Opening stream socket connection...";
   ws = new WebSocket('ws://localhost:3000');
 
+  ws.onopen = () => {
+    chrome.runtime.sendMessage({ action: "SERVER_READY" });
+    chrome.runtime.sendMessage({ action: "START_CAPTURE" }, (response) => {
+      if (response && !response.success) {
+        statusDisplay.textContent = "Capture Error: " + response.error;
+        if (ws) ws.close();
+        return;
+      }
+      
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      startTime = Date.now();
+      timerInterval = setInterval(updateLiveMetrics, 250);
+    });
+  };
+
   ws.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data);
       if (data.type === 'SEGMENT_ROTATED') {
-        // Reset the timer for the next 250 MB audio file segment
         startTime = Date.now();
       }
       if (data.type === 'PROCESSING_COMPLETE') {
-        statusDisplay.textContent = "✅ Audio Saved to Device!";
-        setTimeout(checkServerStatus, 2000);
+         statusDisplay.textContent = "✅ Audio Saved to Device!";
+         setTimeout(checkServerStatus, 2000);
       }
-    } catch (e) { /* Bypass raw stream chunks safely */ }
+    } catch (e) { }
   };
 
   ws.onerror = () => {
+    chrome.runtime.sendMessage({ action: "SERVER_OFFLINE" });
     statusDisplay.textContent = "Backend offline! Run node server.js first.";
     handleCleanStopState();
   };
-
-  startBtn.disabled = true;
-  stopBtn.disabled = false;
-  startTime = Date.now();
-  timerInterval = setInterval(updateLiveMetrics, 250);
 });
 
 stopBtn.addEventListener('click', handleCleanStopState);
 
-// Forward raw live audio array streams from the background service worker to the Node.js WebSocket server
+// Receives continuous audio updates from our offscreen script frame and relays them to the backend server
 chrome.runtime.onMessage.addListener((message) => {
-  if (message.action === "AUDIO_DATA" && ws && ws.readyState === WebSocket.OPEN) {
+  if (message.action === "AUDIO_DATA_RELAY" && ws && ws.readyState === WebSocket.OPEN) {
     ws.send(message.buffer);
   }
 });
-
