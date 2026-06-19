@@ -25,38 +25,31 @@ function updateLiveMetrics() {
 }
 
 function handleCleanStopState() {
-  startBtn.disabled = false;
-  stopBtn.disabled = true;
-  if (timerInterval) clearInterval(timerInterval);
-  timerDisplay.textContent = "00:00:00";
-  statusDisplay.textContent = "Processing and Normalizing Audio File...";
-
-  chrome.runtime.sendMessage({ action: "STOP_CAPTURE" });
-  if (ws) {
-    ws.close();
-    ws = null;
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    if (timerInterval) clearInterval(timerInterval);
+    timerDisplay.textContent = "00:00:00";
+    statusDisplay.textContent = "Flushing audio buffer and normalizing...";
+  
+    // 1. Tell background script to stop capturing audio immediately
+    chrome.runtime.sendMessage({ action: "STOP_CAPTURE" });
+  
+    // 2. DELAY CLOSING: Wait 500ms to let the final data packets reach the server
+    setTimeout(() => {
+      statusDisplay.textContent = "Processing and Normalizing Audio File...";
+      if (ws) {
+        ws.close();
+        ws = null;
+      }
+      // Check server availability to restore icon state colors
+      setTimeout(checkServerStatus, 1500);
+    }, 500); 
   }
-}
+  
 
 startBtn.addEventListener('click', () => {
   statusDisplay.textContent = "Opening stream socket connection...";
   ws = new WebSocket('ws://localhost:3000');
-
-  ws.onopen = () => {
-    // Send a message to the background service worker to begin audio capture
-    chrome.runtime.sendMessage({ action: "START_CAPTURE" }, (response) => {
-      if (response && !response.success) {
-        statusDisplay.textContent = "Capture Error: " + response.error;
-        if (ws) ws.close();
-        return;
-      }
-      
-      startBtn.disabled = true;
-      stopBtn.disabled = false;
-      startTime = Date.now();
-      timerInterval = setInterval(updateLiveMetrics, 250);
-    });
-  };
 
   ws.onmessage = (event) => {
     try {
@@ -65,13 +58,22 @@ startBtn.addEventListener('click', () => {
         // Reset the timer for the next 250 MB audio file segment
         startTime = Date.now();
       }
-    } catch (e) { /* Bypass binary structures */ }
+      if (data.type === 'PROCESSING_COMPLETE') {
+        statusDisplay.textContent = "✅ Audio Saved to Device!";
+        setTimeout(checkServerStatus, 2000);
+      }
+    } catch (e) { /* Bypass raw stream chunks safely */ }
   };
 
   ws.onerror = () => {
     statusDisplay.textContent = "Backend offline! Run node server.js first.";
     handleCleanStopState();
   };
+
+  startBtn.disabled = true;
+  stopBtn.disabled = false;
+  startTime = Date.now();
+  timerInterval = setInterval(updateLiveMetrics, 250);
 });
 
 stopBtn.addEventListener('click', handleCleanStopState);
