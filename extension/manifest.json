@@ -1,0 +1,21 @@
+{
+    "manifest_version": 3,
+    "name": "GKroon-Audio-Recorder",
+    "version": "1.0.0",
+    "description": "Persistent tab audio capture engine with side panel live timer telemetry view.",
+    "permissions": [
+      "tabCapture",
+      "activeTab",
+      "sidePanel"
+    ],
+    "background": {
+      "service_worker": "background.js"
+    },
+    "side_panel": {
+      "default_path": "sidepanel.html"
+    },
+    "action": {
+      "default_title": "Open Audio Recorder Panel"
+    }
+  }
+  

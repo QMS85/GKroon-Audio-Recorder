@@ -1,0 +1,23 @@
+{
+  "name": "GKroon-Audio-Recorder-Backend",
+  "version": "1.0.0",
+  "description": "Auto-segmenting, volume-normalizing 16-bit 44.1kHz Stereo WAV web audio stream receiver.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "audio",
+    "wav",
+    "ffmpeg",
+    "chrome-extension",
+    "websocket"
+  ],
+  "author": "Jonathan Peters-Developer",
+  "license": "MIT",
+  "dependencies": {
+    "ffmpeg-static": "^5.2.0",
+    "node-wav": "^0.0.2",
+    "ws": "^8.18.0"
+  }
+}
