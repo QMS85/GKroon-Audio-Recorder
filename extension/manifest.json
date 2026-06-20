@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Gkroon  Audio Recorder",
+  "name": "GKroon Audio Recorder",
   "version": "3.0.0",
   "description": "Persistent tab audio capture engine using offscreen processing to prevent service worker timeouts.",
   "permissions": [
@@ -29,3 +29,4 @@
     }
   }
 }
+
